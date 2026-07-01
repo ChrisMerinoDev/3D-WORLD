@@ -159,14 +159,14 @@ export const useWorldStore = create<WorldStore>((set, get) => ({
     } else if (level === "state") {
       set({ level: "country", selectedState: undefined, cities: [] });
     } else if (level === "country") {
-      set((s) => ({
+      set({
         level: "world",
         selectedCountry: undefined,
         selectedState: undefined,
         states: [],
         cities: [],
         activeTimezone: browserTimezone(),
-      }));
+      });
     }
   },
 

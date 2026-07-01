@@ -3,7 +3,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup } from "@testing-library/react";
 
 // Register jest-dom matchers (toHaveTextContent, toBeInTheDocument, …) on the
-// Vitest `expect`.
+// Vitest `expect`. Type augmentation lives in vitest.d.ts.
 expect.extend(matchers);
 
 // framer-motion's `useReducedMotion` reads `window.matchMedia`, which jsdom does

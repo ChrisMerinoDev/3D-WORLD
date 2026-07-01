@@ -98,5 +98,8 @@ export function useZonedTime(zone: string): ZonedTime {
       zoneLabel: zoneLabelFrom(zone),
       valid,
     };
+    // `second` is an intentional trigger: the body reads the live clock via
+    // DateTime.now(), so we recompute each tick and whenever the zone changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zone, second]);
 }
