@@ -168,7 +168,7 @@ function PanelShell({
         </div>
       )}
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="aurora-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={viewKey}
@@ -178,7 +178,7 @@ function PanelShell({
             animate={{ opacity: 1, x: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, x: -10 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="aurora-scroll h-full overflow-y-auto px-3 pb-3"
+            className="px-3 pb-3"
           >
             {level === "city" ? (
               <CityDetail />
