@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.next/
+out/
+
+# testing
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# env
+.env
+.env*.local
+.env.development
+.env.production
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+.turbo
+*.tsbuildinfo
