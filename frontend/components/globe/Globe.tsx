@@ -20,15 +20,53 @@
  * widgets stylesheet is imported statically — CSS has no such ordering need.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import "cesium/Build/Cesium/Widgets/widgets.css";
 import { useWorldStore, type WorldStore } from "@/store/worldStore";
 import { ALTITUDE, FLYTO_DURATION, MAX_MARKERS, MAX_RENDER_TIME_CHANGE, PALETTE } from "./lib/constants";
 import { isWebGLAvailable } from "./lib/webgl";
 import { nearestCountryIso2 } from "./lib/geo";
 
+// Type-only imports (erased at build) — the engine itself is loaded at RUNTIME
+// from the static UMD bundle at /cesium/Cesium.js (see loadCesium). This keeps
+// Cesium OUT of the Turbopack bundle, which otherwise mangles its built code
+// ("Octal escape sequences are not allowed in template strings") and never
+// starts, leaving the loader spinning forever.
 type CesiumModule = typeof import("cesium");
 type Viewer = import("cesium").Viewer;
 type CustomDataSource = import("cesium").CustomDataSource;
+
+const CESIUM_BASE = "/cesium";
+let cesiumPromise: Promise<CesiumModule> | null = null;
+
+/** Load the Cesium UMD build + widgets CSS from /public/cesium exactly once. */
+function loadCesium(): Promise<CesiumModule> {
+  if (cesiumPromise) return cesiumPromise;
+  cesiumPromise = new Promise<CesiumModule>((resolve, reject) => {
+    const w = window as unknown as { CESIUM_BASE_URL?: string; Cesium?: CesiumModule };
+    w.CESIUM_BASE_URL = CESIUM_BASE;
+    if (w.Cesium) {
+      resolve(w.Cesium);
+      return;
+    }
+    // Stylesheet (idempotent).
+    if (!document.querySelector('link[data-cesium="1"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = `${CESIUM_BASE}/Widgets/widgets.css`;
+      link.dataset.cesium = "1";
+      document.head.appendChild(link);
+    }
+    const script = document.createElement("script");
+    script.src = `${CESIUM_BASE}/Cesium.js`;
+    script.async = true;
+    script.onload = () => {
+      if (w.Cesium) resolve(w.Cesium);
+      else reject(new Error("Cesium failed to initialize"));
+    };
+    script.onerror = () => reject(new Error("Cesium script failed to load"));
+    document.head.appendChild(script);
+  });
+  return cesiumPromise;
+}
 
 // WebGL support is static per session — detect once, read via useSyncExternalStore.
 let webglSupport: boolean | undefined;
@@ -64,9 +102,8 @@ export default function Globe() {
     let cancelled = false;
 
     (async () => {
-      // Base URL must be set before Cesium evaluates its worker/asset paths.
-      (window as unknown as { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL = "/cesium";
-      const Cesium: CesiumModule = await import("cesium");
+      // Load Cesium from the static UMD bundle (not the Turbopack graph).
+      const Cesium: CesiumModule = await loadCesium();
       if (cancelled) return;
 
       // --- Imagery + terrain: prefer ion (Bing), fall back to Esri World Imagery ---

@@ -15,6 +15,9 @@ const buildDir = join(dirname(cesiumPkg), "Build", "Cesium");
 const outDir = join(process.cwd(), "public", "cesium");
 
 const DIRS = ["Workers", "ThirdParty", "Assets", "Widgets"];
+// The UMD entry (loaded via a <script> tag at runtime so Cesium is NOT bundled
+// through Turbopack, which mangles Cesium's built code).
+const FILES = ["Cesium.js"];
 
 async function exists(p) {
   try {
@@ -26,8 +29,8 @@ async function exists(p) {
 }
 
 async function main() {
-  // Cheap up-to-date check: if Workers already copied, assume done.
-  if (await exists(join(outDir, "Workers"))) {
+  // Cheap up-to-date check: if the UMD entry is already copied, assume done.
+  if (await exists(join(outDir, "Cesium.js"))) {
     console.log("[copy-cesium] assets already present, skipping");
     return;
   }
@@ -37,7 +40,12 @@ async function main() {
     if (!(await exists(from))) continue;
     await cp(from, join(outDir, d), { recursive: true });
   }
-  console.log(`[copy-cesium] copied ${DIRS.join(", ")} -> public/cesium`);
+  for (const f of FILES) {
+    const from = join(buildDir, f);
+    if (!(await exists(from))) continue;
+    await cp(from, join(outDir, f));
+  }
+  console.log(`[copy-cesium] copied ${[...DIRS, ...FILES].join(", ")} -> public/cesium`);
 }
 
 main().catch((err) => {
