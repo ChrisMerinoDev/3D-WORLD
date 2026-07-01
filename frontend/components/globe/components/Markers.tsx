@@ -13,7 +13,6 @@ import {
   Object3D,
   type Sprite,
   SpriteMaterial,
-  Vector3,
 } from "three";
 import { MARKER_RADIUS } from "../lib/constants";
 import { latLngToVector3 } from "../lib/geo";
