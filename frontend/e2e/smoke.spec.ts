@@ -25,17 +25,36 @@ test("app loads with globe, clock, date and breadcrumb — no page errors", asyn
   await expect(page.getByTestId("breadcrumb")).toBeVisible();
 
   // The clock should show a real time readout (HH:MM) once mounted.
-  await expect(page.getByTestId("world-clock")).toContainText(/\d{2}:\d{2}/);
+  const clock = page.getByTestId("world-clock");
+  await expect(clock).toContainText(/\d{2}:\d{2}/);
 
-  // Give any late async work (data fetch, WebGL init) a beat to surface errors.
+  // The clock is live: its readout (seconds included) must change within a few
+  // seconds. Polling (rather than a fixed sleep) keeps this fast and non-flaky.
+  const firstReadout = (await clock.innerText()).trim();
+  await expect(async () => {
+    expect((await clock.innerText()).trim()).not.toBe(firstReadout);
+  }).toPass({ timeout: 5_000 });
+
+  // Give any late async work (data fetch, Cesium/WebGL init, tile fetches) a beat
+  // to surface errors.
   await page.waitForTimeout(1500);
 
-  // No uncaught JS exceptions.
+  // No uncaught JS exceptions — the app must never throw, even if the globe's
+  // WebGL init fails (the Globe catches that and shows a static fallback).
   expect(pageErrors, `page errors:\n${pageErrors.join("\n")}`).toEqual([]);
 
-  // No console errors (ignore benign WebGL/context noise from headless GPU).
-  const meaningful = consoleErrors.filter(
-    (t) => !/webgl|swiftshader|three\.js|GPU stall|Failed to create WebGL/i.test(t),
-  );
+  // Console errors: allow known-benign graphics/globe noise, FAIL on app errors.
+  //
+  // Headless chromium renders WebGL via SwiftShader and CesiumJS pulls satellite
+  // imagery/terrain from Cesium ion. In a headless/CI context these legitimately
+  // emit noise we must not fail on:
+  //   - WebGL / SwiftShader / GPU context warnings,
+  //   - CesiumJS-originated messages,
+  //   - failed ion / tile / imagery / terrain resource fetches (network-gated).
+  // Anything else (React errors, our own thrown errors, 500s from our API) is a
+  // real failure and is kept.
+  const BENIGN =
+    /webgl|swiftshader|gpu|cesium|\bion\b|assets\.ion|imagery|terrain|quantized|\btile(s)?\b|Failed to load resource.*(cesium|ion|tile|terrain|imagery)/i;
+  const meaningful = consoleErrors.filter((t) => !BENIGN.test(t));
   expect(meaningful, `console errors:\n${meaningful.join("\n")}`).toEqual([]);
 });

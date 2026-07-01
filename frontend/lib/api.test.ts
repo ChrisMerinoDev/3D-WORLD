@@ -45,6 +45,18 @@ describe("api client — request paths", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/countries/US/states/US-CA/cities");
   });
 
+  it("countryCities(iso2) GETs the whole-country cities path with no limit query", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+    await api.countryCities("JP");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/countries/JP/cities");
+  });
+
+  it("countryCities(iso2, limit) appends an encoded limit query", async () => {
+    fetchMock.mockResolvedValue(jsonResponse([]));
+    await api.countryCities("JP", 250);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/countries/JP/cities?limit=250");
+  });
+
   it("time(tz) GETs /api/time with an encoded tz query", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ timezone: "America/New_York" }));
     await api.time("America/New_York");

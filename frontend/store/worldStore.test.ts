@@ -71,6 +71,27 @@ const LA: City = {
   lng: -118.24,
   timezone: "America/Los_Angeles",
 };
+const JP: Country = {
+  iso2: "JP",
+  iso3: "JPN",
+  name: "Japan",
+  flag: "🇯🇵",
+  lat: 36,
+  lng: 138,
+  timezones: ["Asia/Tokyo"],
+  primaryTimezone: "Asia/Tokyo",
+  capital: "Tokyo",
+  currency: "JPY",
+  stateCount: 47,
+};
+const TOKYO: City = {
+  name: "Tokyo",
+  stateIso: "JP-13",
+  countryIso2: "JP",
+  lat: 35.68,
+  lng: 139.69,
+  timezone: "Asia/Tokyo",
+};
 
 // Snapshot the pristine store (with its actions) once so we can reset per test.
 const PRISTINE = useWorldStore.getState();
@@ -174,6 +195,64 @@ describe("useWorldStore drill-down", () => {
     expect(s.selectedState).toBeUndefined();
     expect(s.states).toEqual([]);
     expect(s.error).toBeUndefined();
+  });
+});
+
+describe("country-wide cities (Cities tab)", () => {
+  it("selectCountry kicks off loadCountryCities with the configured limit", async () => {
+    mockApi.countries.mockResolvedValue([JP]);
+    mockApi.states.mockResolvedValue([]);
+    mockApi.countryCities.mockResolvedValue([TOKYO]);
+    await useWorldStore.getState().loadCountries();
+
+    await useWorldStore.getState().selectCountry("JP");
+
+    expect(mockApi.countryCities).toHaveBeenCalledWith("JP", 250);
+  });
+
+  it("loadCountryCities populates countryCities (capital first) and clears loading", async () => {
+    mockApi.countryCities.mockResolvedValue([TOKYO]);
+    // Guard checks the current selection, so pin selectedCountry to JP first.
+    useWorldStore.setState({ selectedCountry: JP });
+
+    await useWorldStore.getState().loadCountryCities("JP");
+
+    const s = useWorldStore.getState();
+    expect(s.countryCities).toEqual([TOKYO]);
+    expect(s.loading.countryCities).toBe(false);
+    expect(s.countryCitiesError).toBeUndefined();
+  });
+
+  it("surfaces a country-cities error without touching the generic error", async () => {
+    mockApi.countryCities.mockRejectedValue(new Error("boom"));
+    useWorldStore.setState({ selectedCountry: JP });
+
+    await useWorldStore.getState().loadCountryCities("JP");
+
+    const s = useWorldStore.getState();
+    expect(s.countryCitiesError).toBe("boom");
+    expect(s.countryCities).toEqual([]);
+    expect(s.loading.countryCities).toBe(false);
+    expect(s.error).toBeUndefined();
+  });
+
+  it("discards a stale country-cities response after the country changes", async () => {
+    const jpCities = deferred<City[]>();
+    mockApi.countryCities.mockImplementation((iso: string) =>
+      iso === "JP" ? jpCities.promise : Promise.resolve([]),
+    );
+    useWorldStore.setState({ selectedCountry: JP });
+
+    const pending = useWorldStore.getState().loadCountryCities("JP");
+    // Switch the active country while JP's cities are still in flight.
+    useWorldStore.setState({ selectedCountry: FR });
+
+    jpCities.resolve([TOKYO]);
+    await pending;
+
+    // The stale JP payload must be discarded (list stays empty from the reset).
+    expect(useWorldStore.getState().countryCities).toEqual([]);
+    expect(useWorldStore.getState().selectedCountry?.iso2).toBe("FR");
   });
 });
 
