@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getTimeInfo, isValidTimeZone, InvalidTimezoneError } from "./time.js";
+import { getTimeInfo, isValidTimeZone, InvalidTimezoneError } from "./time";
 
 describe("getTimeInfo", () => {
   // Fixed instant: 2026-06-30T12:00:00Z (northern summer → DST active in NY).

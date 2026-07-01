@@ -13,8 +13,8 @@
  */
 import { Country as CscCountry, State as CscState, City as CscCity } from "country-state-city";
 import type { ICountry, IState, ICity } from "country-state-city";
-import type { Country, State, City } from "../types.js";
-import { COUNTRY_META } from "../data/countryMeta.js";
+import type { Country, State, City } from "../types";
+import { COUNTRY_META } from "../data/countryMeta";
 
 /** Normalize an ISO code from untrusted input: trim + upper-case. */
 export function normalizeIsoCode(code: string): string {

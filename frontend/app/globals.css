@@ -1,26 +1,103 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ------------------------------------------------------------------ */
+/* Aurora design tokens — cohesive with the globe palette (constants). */
+/* ------------------------------------------------------------------ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-aurora-display);
+  --font-display: var(--font-aurora-display);
+  --font-mono: var(--font-aurora-mono);
+
+  --color-void: #010209;
+  --color-space: #04060d;
+  --color-ink: #dcefff;
+  --color-aurora: #4ff0e0;
+  --color-aurora-warm: #7fb8ff;
+  --color-country: #79f7ff;
+  --color-state: #c39bff;
+  --color-city: #ffd479;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--color-space);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  /* Full-screen cinematic app: the globe + panels manage their own scroll. */
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-aurora) 40%, transparent);
+  color: #ffffff;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reusable HUD surfaces                                              */
+/* ------------------------------------------------------------------ */
+.glass {
+  background: linear-gradient(
+    180deg,
+    rgba(10, 18, 38, 0.74),
+    rgba(4, 7, 15, 0.7)
+  );
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(127, 184, 255, 0.14);
+  box-shadow:
+    0 18px 50px -20px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Cinematic edge darkening over the globe; never intercepts pointer input. */
+.hud-vignette {
+  background:
+    radial-gradient(
+      130% 90% at 50% 8%,
+      transparent 55%,
+      rgba(1, 2, 9, 0.5) 100%
+    ),
+    linear-gradient(180deg, rgba(1, 2, 9, 0.35) 0%, transparent 22%);
+}
+
+/* Slim, on-brand scrollbars inside panels. */
+.aurora-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 184, 255, 0.28) transparent;
+}
+.aurora-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.aurora-scroll::-webkit-scrollbar-thumb {
+  background: rgba(127, 184, 255, 0.28);
+  border-radius: 9999px;
+}
+.aurora-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Focus ring that reads on the dark HUD. */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-aurora);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* Respect reduced-motion for all UI animation + the dynamic-import spinner. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

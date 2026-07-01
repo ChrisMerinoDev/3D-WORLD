@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Country as CscCountry } from "country-state-city";
-import { getCountries, getCountry, getStates, getCities, normalizeIsoCode } from "./geo.js";
-import { COUNTRY_META } from "../data/countryMeta.js";
-import { isValidTimeZone } from "./time.js";
+import { getCountries, getCountry, getStates, getCities, normalizeIsoCode } from "./geo";
+import { COUNTRY_META } from "../data/countryMeta";
+import { isValidTimeZone } from "./time";
 
 describe("getCountries", () => {
   const countries = getCountries();

@@ -5,7 +5,7 @@
  * The server returns the authoritative offset/abbreviation/ISO instant; the
  * client is expected to tick locally between refreshes.
  */
-import type { TimeInfo } from "../types.js";
+import type { TimeInfo } from "../types";
 
 /** Thrown when a caller passes a string that is not a valid IANA timezone. */
 export class InvalidTimezoneError extends Error {
