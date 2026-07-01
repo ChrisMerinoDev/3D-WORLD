@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useShallow } from "zustand/react/shallow";
 import { useWorldStore, type DrillLevel } from "@/store/worldStore";
 import { LEVEL_ACCENT, LEVEL_LABEL } from "./levelAccent";
 
@@ -60,11 +61,13 @@ function Header({ level, accent }: { level: DrillLevel; accent: string }) {
   const country = useWorldStore((s) => s.selectedCountry);
   const state = useWorldStore((s) => s.selectedState);
   const city = useWorldStore((s) => s.selectedCity);
-  const counts = useWorldStore((s) => ({
-    countries: s.countries.length,
-    states: s.states.length,
-    cities: s.cities.length,
-  }));
+  const counts = useWorldStore(
+    useShallow((s) => ({
+      countries: s.countries.length,
+      states: s.states.length,
+      cities: s.cities.length,
+    })),
+  );
   const loading = useWorldStore((s) => s.loading);
 
   let title = "Explore Earth";

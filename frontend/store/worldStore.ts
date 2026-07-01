@@ -99,8 +99,11 @@ export const useWorldStore = create<WorldStore>((set, get) => ({
     }));
     try {
       const states = await api.states(iso2);
+      // Discard if the selection changed while awaiting (out-of-order guard).
+      if (get().selectedCountry?.iso2 !== iso2) return;
       set((s) => ({ states, loading: { ...s.loading, states: false } }));
     } catch (e) {
+      if (get().selectedCountry?.iso2 !== iso2) return;
       set((s) => ({
         loading: { ...s.loading, states: false },
         error: e instanceof Error ? e.message : "Failed to load states",
@@ -122,8 +125,13 @@ export const useWorldStore = create<WorldStore>((set, get) => ({
     }));
     try {
       const cities = await api.cities(country.iso2, iso);
+      // Discard if the selection changed while awaiting (out-of-order guard).
+      if (get().selectedState?.iso !== iso || get().selectedCountry?.iso2 !== country.iso2)
+        return;
       set((s) => ({ cities, loading: { ...s.loading, cities: false } }));
     } catch (e) {
+      if (get().selectedState?.iso !== iso || get().selectedCountry?.iso2 !== country.iso2)
+        return;
       set((s) => ({
         loading: { ...s.loading, cities: false },
         error: e instanceof Error ? e.message : "Failed to load cities",
