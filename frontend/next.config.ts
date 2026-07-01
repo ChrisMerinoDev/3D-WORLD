@@ -28,7 +28,9 @@ const isProd = process.env.NODE_ENV === "production";
 // Without 'unsafe-eval' the engine never initializes and the globe hangs on the
 // loader. Tile hosts below cover Cesium ion, Bing (ion imagery) and the free
 // Esri World Imagery fallback.
-const scriptSrc = "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
+// `blob:` is required so Cesium's web workers can `importScripts` their
+// blob-URL worker code (terrain/tile decoding).
+const scriptSrc = "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:";
 
 const TILE_HOSTS = [
   "https://api.cesium.com",

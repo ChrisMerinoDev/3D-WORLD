@@ -51,8 +51,8 @@ export function WorldClock() {
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[0.62rem] text-ink/45">
-        <span className="truncate" title={zone}>
-          {t.zoneLabel}
+        <span className="truncate" title={mounted ? zone : undefined}>
+          {mounted ? t.zoneLabel : "—"}
         </span>
         <span className="shrink-0 text-ink/60">{mounted ? t.offsetLabel : ""}</span>
       </div>
