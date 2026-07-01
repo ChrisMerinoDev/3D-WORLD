@@ -28,7 +28,7 @@ export function WorldClock() {
       initial={reduce ? false : { opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut", delay: 0.05 }}
-      className="glass pointer-events-auto w-[13.5rem] rounded-2xl px-4 py-3 sm:w-60 sm:px-5 sm:py-4"
+      className="glass pointer-events-auto w-[10.75rem] rounded-2xl px-3 py-2.5 sm:w-60 sm:px-5 sm:py-4"
     >
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-display text-[0.58rem] uppercase tracking-[0.3em] text-ink/50">
@@ -43,7 +43,7 @@ export function WorldClock() {
       </div>
 
       <div
-        className="mt-1 font-mono text-3xl font-medium leading-none tabular-nums text-ink sm:text-4xl"
+        className="mt-1 font-mono text-2xl font-medium leading-none tabular-nums text-ink sm:text-4xl"
         aria-live="off"
       >
         <span>{hoursMinutes}</span>

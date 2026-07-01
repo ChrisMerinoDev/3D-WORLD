@@ -24,6 +24,9 @@ test-results/
 # vercel
 .vercel
 
+# generated cesium runtime assets (copied from node_modules at build)
+frontend/public/cesium/
+
 # misc
 .DS_Store
 *.log

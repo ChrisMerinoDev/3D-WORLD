@@ -22,17 +22,31 @@ const isProd = process.env.NODE_ENV === "production";
  * - `connect-src 'self'` is enough today because the API is same-origin Route
  *   Handlers. Widen this if the backend is split to a separate origin.
  */
+// Cesium loads satellite/terrain tiles at runtime and uses WebAssembly
+// (draco/basis). 'wasm-unsafe-eval' permits WASM compilation without allowing
+// general eval. Tile hosts below cover Cesium ion, Bing (ion imagery) and the
+// free Esri World Imagery fallback.
 const scriptSrc = isProd
-  ? "'self' 'unsafe-inline'"
-  : "'self' 'unsafe-inline' 'unsafe-eval'";
+  ? "'self' 'unsafe-inline' 'wasm-unsafe-eval'"
+  : "'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'";
+
+const TILE_HOSTS = [
+  "https://api.cesium.com",
+  "https://assets.ion.cesium.com",
+  "https://*.cesium.com",
+  "https://dev.virtualearth.net",
+  "https://*.virtualearth.net",
+  "https://services.arcgisonline.com",
+  "https://*.arcgisonline.com",
+].join(" ");
 
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src ${scriptSrc}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data:",
+  `img-src 'self' blob: data: ${TILE_HOSTS}`,
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self' ${TILE_HOSTS}`,
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
   "frame-ancestors 'self'",

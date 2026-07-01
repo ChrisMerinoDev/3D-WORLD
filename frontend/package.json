@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "copy-cesium": "node scripts/copy-cesium.mjs",
+    "predev": "node scripts/copy-cesium.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-cesium.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -17,6 +20,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
+    "cesium": "^1.142.0",
     "framer-motion": "^12.42.2",
     "gsap": "^3.15.0",
     "luxon": "^3.7.2",

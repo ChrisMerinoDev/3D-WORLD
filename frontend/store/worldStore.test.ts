@@ -7,6 +7,9 @@ vi.mock("@/lib/api", () => ({
     countries: vi.fn(),
     states: vi.fn(),
     cities: vi.fn(),
+    // selectCountry fires loadCountryCities in parallel; default it to empty so
+    // existing drill-down assertions are unaffected.
+    countryCities: vi.fn().mockResolvedValue([]),
     time: vi.fn(),
   },
   ApiRequestError: class ApiRequestError extends Error {},

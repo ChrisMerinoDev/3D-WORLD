@@ -16,7 +16,7 @@ const Globe = dynamic(() => import("@/components/globe/Globe"), {
 
 export default function Home() {
   return (
-    <main className="relative h-dvh w-screen overflow-hidden bg-space text-ink">
+    <main className="relative h-dvh w-full overflow-hidden bg-space text-ink">
       {/* Globe fills the viewport behind the HUD. */}
       <div className="absolute inset-0">
         <Globe />

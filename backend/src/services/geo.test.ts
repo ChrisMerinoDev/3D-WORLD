@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { Country as CscCountry } from "country-state-city";
-import { getCountries, getCountry, getStates, getCities, normalizeIsoCode } from "./geo";
+import {
+  getCountries,
+  getCountry,
+  getStates,
+  getCities,
+  getCountryCities,
+  DEFAULT_COUNTRY_CITIES_LIMIT,
+  normalizeIsoCode,
+} from "./geo";
 import { COUNTRY_META } from "../data/countryMeta";
 import { isValidTimeZone } from "./time";
 
@@ -106,5 +114,50 @@ describe("getCities", () => {
     if (cities.length > 0) {
       expect(cities[0]!.timezone).toBe("Asia/Tokyo");
     }
+  });
+});
+
+describe("getCountryCities", () => {
+  it("returns cities with valid coords aggregated across all subdivisions (US)", () => {
+    const cities = getCountryCities("US");
+    expect(cities).not.toBeNull();
+    expect(cities!.length).toBeGreaterThan(0);
+    for (const city of cities!) {
+      expect(city.countryIso2).toBe("US");
+      expect(Number.isFinite(city.lat)).toBe(true);
+      expect(Number.isFinite(city.lng)).toBe(true);
+    }
+    // Aggregation spans multiple subdivisions, not just one state.
+    const distinctStates = new Set(cities!.map((c) => c.stateIso));
+    expect(distinctStates.size).toBeGreaterThan(1);
+  });
+
+  it("places the capital first when it can be matched by name (JP → Tokyo)", () => {
+    const cities = getCountryCities("JP")!;
+    expect(cities.length).toBeGreaterThan(0);
+    expect(cities[0]!.name).toBe("Tokyo");
+    // Capital keeps its real subdivision + derivable single-zone timezone.
+    expect(cities[0]!.stateIso).not.toBe("");
+    expect(cities[0]!.timezone).toBe("Asia/Tokyo");
+  });
+
+  it("respects the limit and defaults sensibly", () => {
+    const five = getCountryCities("US", 5)!;
+    expect(five.length).toBe(5);
+    // Capital is hoisted to the front even under a tight cap.
+    expect(five[0]!.name).toBe("Washington, D.C.");
+
+    const defaulted = getCountryCities("US")!;
+    expect(defaulted.length).toBeLessThanOrEqual(DEFAULT_COUNTRY_CITIES_LIMIT);
+    // US has far more than the default cap, so it should be exactly the cap.
+    expect(defaulted.length).toBe(DEFAULT_COUNTRY_CITIES_LIMIT);
+
+    // Invalid limits fall back to a positive, capped result rather than throwing.
+    expect(getCountryCities("US", 0)!.length).toBeGreaterThan(0);
+    expect(getCountryCities("US", -10)!.length).toBeGreaterThan(0);
+  });
+
+  it("returns null for an unknown country code", () => {
+    expect(getCountryCities("ZZ")).toBeNull();
   });
 });

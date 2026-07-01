@@ -56,6 +56,18 @@ export const api = {
       signal,
     ),
 
+  /**
+   * Cities aggregated across a whole country (capital first), so a country
+   * always surfaces places even when its individual regions carry zero cities.
+   */
+  countryCities: (countryIso2: string, limit?: number, signal?: AbortSignal) =>
+    get<City[]>(
+      `/countries/${encodeURIComponent(countryIso2)}/cities${
+        limit != null ? `?limit=${encodeURIComponent(limit)}` : ""
+      }`,
+      signal,
+    ),
+
   /** Authoritative time info for an IANA timezone. */
   time: (timezone: string, signal?: AbortSignal) =>
     get<TimeInfo>(`/time?tz=${encodeURIComponent(timezone)}`, signal),

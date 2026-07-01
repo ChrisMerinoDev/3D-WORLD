@@ -105,6 +105,13 @@ const countryByIso2: ReadonlyMap<string, Country> = new Map(
 // Lazily-populated memo caches for derived subtrees.
 const statesByCountry = new Map<string, State[]>();
 const citiesByStateKey = new Map<string, City[]>();
+// Full, ordered (capital-first + alphabetical) country-level city lists, memoized
+// per country. Callers slice this to their requested limit, so different limits
+// reuse the same computed array.
+const citiesByCountry = new Map<string, City[]>();
+
+/** Default cap on country-level city payloads (keeps responses small). */
+export const DEFAULT_COUNTRY_CITIES_LIMIT = 300;
 
 function buildState(raw: IState, countryIso2: string): State {
   const iso = raw.isoCode.toUpperCase();
@@ -189,4 +196,75 @@ export function getCities(countryIso2: string, stateIso: string): City[] | null 
   const cities = buildCities(CscCity.getCitiesOfState(iso2, stIso), iso2, stIso, timezone);
   citiesByStateKey.set(key, cities);
   return cities.slice();
+}
+
+/**
+ * Cities aggregated across ALL subdivisions of a country.
+ *
+ * Motivation: many `country-state-city` regions carry zero cities, so drilling
+ * country → region can dead-end at "0 cities". This surfaces cities directly at
+ * the country level so a country always has places to show on the globe.
+ *
+ * Contract:
+ *  - Each `City` keeps its real `stateIso` (the subdivision the row belongs to),
+ *    `countryIso2`, `lat`, `lng`, and `timezone` when derivable (single-zone
+ *    countries only, matching {@link getCities}).
+ *  - Only cities with real coordinates are returned (the globe needs markers).
+ *  - The capital city (matched by name against the country meta) is placed first
+ *    when present; the remainder is alphabetical — a stable, sensible ordering.
+ *  - The result is capped at `limit` (default {@link DEFAULT_COUNTRY_CITIES_LIMIT}).
+ *    We never return the full ~20k-city dataset.
+ *  - Returns null when the country code is unknown (so the transport can 404).
+ *
+ * Performance: the full ordered list is computed once per country and memoized;
+ * subsequent calls (any limit) just slice the cached array.
+ */
+export function getCountryCities(
+  countryIso2: string,
+  limit: number = DEFAULT_COUNTRY_CITIES_LIMIT,
+): City[] | null {
+  const iso2 = normalizeIsoCode(countryIso2);
+  const country = countryByIso2.get(iso2);
+  if (!country) return null;
+
+  // Clamp to a positive integer so callers can't request 0 / negative / NaN.
+  const cap = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : DEFAULT_COUNTRY_CITIES_LIMIT;
+
+  let ordered = citiesByCountry.get(iso2);
+  if (!ordered) {
+    const timezone = country.timezones.length === 1 ? country.timezones[0] : undefined;
+
+    // buildCities preserves each row's real subdivision via its stateCode.
+    const rows = CscCity.getCitiesOfCountry(iso2) ?? [];
+    const withCoords: City[] = [];
+    for (const raw of rows) {
+      const lat = parseCoord(raw.latitude);
+      const lng = parseCoord(raw.longitude);
+      if (lat == null || lng == null) continue;
+      withCoords.push({
+        name: raw.name,
+        stateIso: (raw.stateCode ?? "").toUpperCase(),
+        countryIso2: iso2,
+        lat,
+        lng,
+        ...(timezone !== undefined ? { timezone } : {}),
+      });
+    }
+    withCoords.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Hoist the capital to the front when we can match it by name.
+    const capital = country.capital?.trim().toLowerCase();
+    if (capital) {
+      const idx = withCoords.findIndex((c) => c.name.toLowerCase() === capital);
+      if (idx > 0) {
+        const [capitalCity] = withCoords.splice(idx, 1);
+        withCoords.unshift(capitalCity!);
+      }
+    }
+
+    ordered = withCoords;
+    citiesByCountry.set(iso2, ordered);
+  }
+
+  return ordered.slice(0, cap);
 }

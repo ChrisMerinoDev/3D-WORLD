@@ -18,16 +18,16 @@ export function Hud() {
       <div aria-hidden className="hud-vignette absolute inset-0" />
 
       {/* Top row: brand (left) + clock/date stack (right). */}
-      <header className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3 sm:p-6">
+      <header className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pl-[calc(env(safe-area-inset-left,0px)+0.75rem)] pr-[calc(env(safe-area-inset-right,0px)+0.75rem)] sm:gap-3 sm:p-6 sm:pt-[calc(env(safe-area-inset-top,0px)+1.5rem)]">
         <Brand />
-        <div className="flex flex-col items-end gap-2.5 sm:gap-3">
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:gap-3">
           <WorldClock />
           <DatePanel />
         </div>
       </header>
 
       {/* Breadcrumb sits under the brand, clear of the clock stack. */}
-      <div className="absolute left-3 top-[4.75rem] sm:left-6 sm:top-28">
+      <div className="absolute left-3 top-[4.5rem] pl-[env(safe-area-inset-left,0px)] sm:left-6 sm:top-28">
         <Breadcrumb />
       </div>
 

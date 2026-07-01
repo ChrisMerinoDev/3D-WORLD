@@ -1,52 +1,196 @@
 "use client";
 
+import { useCallback, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
+import type { Country, State, City } from "@aurora/backend/types";
 import { useWorldStore, type DrillLevel } from "@/store/worldStore";
 import { LEVEL_ACCENT, LEVEL_LABEL } from "./levelAccent";
 
+/** Stable id so the collapse/reopen controls can reference the panel (a11y). */
+const PANEL_ID = "aurora-navigator-panel";
+/** Stable id linking the Cities/Regions tabs to their content region (a11y). */
+const LIST_REGION_ID = "aurora-navigator-list-region";
+
+/**
+ * The kind of item a level (and, at country level, the active tab) is showing.
+ * Drives filtering, row rendering and selection.
+ */
+type ListKind = "country" | "state" | "countryCity" | "city";
+type CountryTab = "cities" | "regions";
+type ListItem = Country | State | City;
+
+function itemName(item: ListItem): string {
+  return item.name;
+}
+
 /**
  * Level-aware navigator. Lets users drill via the UI (not only the globe):
- * countries → states → cities → city detail. Every async section handles
- * loading (skeletons, no layout shift), error (with retry) and empty states.
+ * countries → states → cities → city detail. Adds live search + submit, a
+ * "Cities | Regions" tab at country level (so cities always surface even when
+ * regions are empty), and a collapse/reopen affordance. Every async section
+ * handles loading (skeletons, no layout shift), error (retry) and empty states.
  */
 export function NavigatorPanel() {
+  const [open, setOpen] = useState(true);
+  const reduce = useReducedMotion();
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      {open ? (
+        <PanelShell key="panel" reduce={reduce} onCollapse={() => setOpen(false)} />
+      ) : (
+        <ReopenHandle key="handle" reduce={reduce} onOpen={() => setOpen(true)} />
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Panel shell (search + tabs + list) + collapse animation            */
+/* ------------------------------------------------------------------ */
+function PanelShell({
+  reduce,
+  onCollapse,
+}: {
+  reduce: boolean | null;
+  onCollapse: () => void;
+}) {
   const level = useWorldStore((s) => s.level);
   const country = useWorldStore((s) => s.selectedCountry);
   const state = useWorldStore((s) => s.selectedState);
-  const reduce = useReducedMotion();
 
-  const accent = LEVEL_ACCENT[level];
-  // A stable key per "view" so AnimatePresence cross-fades on drill changes.
+  const selectCountry = useWorldStore((s) => s.selectCountry);
+  const selectState = useWorldStore((s) => s.selectState);
+  const selectCity = useWorldStore((s) => s.selectCity);
+
+  // Data sources (each is a stable array reference from the store).
+  const countries = useWorldStore((s) => s.countries);
+  const states = useWorldStore((s) => s.states);
+  const cities = useWorldStore((s) => s.cities);
+  const countryCities = useWorldStore((s) => s.countryCities);
+
+  const [tab, setTab] = useState<CountryTab>("cities");
+  const [query, setQuery] = useState("");
+
+  // Reset the country tab to "Cities" whenever the country changes. Done during
+  // render (the React-recommended "store previous value in state" pattern)
+  // rather than in an effect, to avoid cascading-render churn.
+  const [prevCountry, setPrevCountry] = useState(country?.iso2);
+  if (prevCountry !== country?.iso2) {
+    setPrevCountry(country?.iso2);
+    setTab("cities");
+  }
+
+  // Reset the search query whenever the drill "view" changes (level, selection
+  // or tab). Same render-phase reset pattern.
+  const resetKey = `${level}:${country?.iso2 ?? ""}:${state?.iso ?? ""}:${tab}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey);
+    setQuery("");
+  }
+
+  // Resolve the active list kind + items for the current view.
+  const { kind, items } = useMemo((): { kind: ListKind; items: ListItem[] } => {
+    if (level === "world") return { kind: "country", items: countries };
+    if (level === "country")
+      return tab === "cities"
+        ? { kind: "countryCity", items: countryCities }
+        : { kind: "state", items: states };
+    if (level === "state") return { kind: "city", items: cities };
+    return { kind: "city", items: [] };
+  }, [level, tab, countries, states, cities, countryCities]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => itemName(it).toLowerCase().includes(q));
+  }, [items, query]);
+
+  const onSelect = useCallback(
+    (item: ListItem) => {
+      switch (kind) {
+        case "country":
+          void selectCountry((item as Country).iso2);
+          break;
+        case "state":
+          void selectState((item as State).iso);
+          break;
+        default:
+          selectCity(item as City);
+      }
+    },
+    [kind, selectCountry, selectState, selectCity],
+  );
+
+  // Enter / submit: pick an exact name match, else the sole remaining match.
+  const onSubmit = useCallback(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return;
+    const exact = items.find((it) => itemName(it).toLowerCase() === q);
+    const target = exact ?? (filtered.length === 1 ? filtered[0] : undefined);
+    if (target) onSelect(target);
+  }, [query, items, filtered, onSelect]);
+
+  const searchable = level !== "city";
   const viewKey =
     level === "world"
       ? "world"
       : level === "country"
-        ? `country:${country?.iso2}`
+        ? `country:${country?.iso2}:${tab}`
         : level === "state"
           ? `state:${state?.iso}`
           : "city";
 
   return (
     <motion.aside
+      id={PANEL_ID}
       aria-label="Location navigator"
-      initial={reduce ? false : { opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.55, ease: "easeOut", delay: 0.18 }}
-      className="glass pointer-events-auto absolute inset-x-3 bottom-3 flex max-h-[42vh] flex-col overflow-hidden rounded-2xl sm:inset-x-auto sm:bottom-6 sm:left-6 sm:max-h-[min(30rem,60vh)] sm:w-[21rem]"
+      initial={reduce ? { opacity: 0 } : { opacity: 0, x: -32 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, x: "-115%" }}
+      transition={{ duration: reduce ? 0.15 : 0.42, ease: [0.4, 0, 0.2, 1] }}
+      className="glass pointer-events-auto absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] flex max-h-[52vh] flex-col overflow-hidden rounded-2xl sm:inset-x-auto sm:bottom-6 sm:left-[calc(env(safe-area-inset-left,0px)+1.5rem)] sm:max-h-[min(32rem,72vh)] sm:w-[22rem]"
     >
-      <Header level={level} accent={accent} />
+      <Header level={level} onCollapse={onCollapse} />
+
+      {searchable && (
+        <div className="flex flex-col gap-2.5 border-b border-white/8 px-3 py-2.5">
+          {level === "country" && <SegmentedTabs tab={tab} onChange={setTab} />}
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            onSubmit={onSubmit}
+            onClear={() => setQuery("")}
+            placeholder={SEARCH_PLACEHOLDER[kind]}
+          />
+        </div>
+      )}
+
       <div className="relative flex-1 overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={viewKey}
+            id={LIST_REGION_ID}
+            role={level === "country" ? "tabpanel" : undefined}
             initial={reduce ? false : { opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, x: -10 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className="aurora-scroll h-full overflow-y-auto px-3 pb-3"
           >
-            <Body level={level} />
+            {level === "city" ? (
+              <CityDetail />
+            ) : (
+              <NavigatorList
+                kind={kind}
+                filtered={filtered}
+                hasItems={items.length > 0}
+                query={query}
+                onSelect={onSelect}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -54,10 +198,48 @@ export function NavigatorPanel() {
   );
 }
 
+const SEARCH_PLACEHOLDER: Record<ListKind, string> = {
+  country: "Search countries…",
+  state: "Search regions…",
+  countryCity: "Search cities…",
+  city: "Search cities…",
+};
+
 /* ------------------------------------------------------------------ */
-/* Header                                                             */
+/* Reopen handle (shown when the panel is collapsed)                   */
 /* ------------------------------------------------------------------ */
-function Header({ level, accent }: { level: DrillLevel; accent: string }) {
+function ReopenHandle({
+  reduce,
+  onOpen,
+}: {
+  reduce: boolean | null;
+  onOpen: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onOpen}
+      aria-label="Open location navigator"
+      aria-expanded={false}
+      aria-controls={PANEL_ID}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, x: -24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, x: -24 }}
+      transition={{ duration: reduce ? 0.15 : 0.32, ease: [0.4, 0, 0.2, 1] }}
+      className="glass pointer-events-auto absolute bottom-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] left-3 flex h-11 items-center gap-2 rounded-full pl-3 pr-4 sm:bottom-6 sm:left-[calc(env(safe-area-inset-left,0px)+1.5rem)]"
+    >
+      <Chevron dir="right" />
+      <span className="font-display text-[0.72rem] uppercase tracking-[0.24em] text-ink/85">
+        Explore
+      </span>
+    </motion.button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Header (with collapse control)                                     */
+/* ------------------------------------------------------------------ */
+function Header({ level, onCollapse }: { level: DrillLevel; onCollapse: () => void }) {
   const country = useWorldStore((s) => s.selectedCountry);
   const state = useWorldStore((s) => s.selectedState);
   const city = useWorldStore((s) => s.selectedCity);
@@ -68,8 +250,11 @@ function Header({ level, accent }: { level: DrillLevel; accent: string }) {
       cities: s.cities.length,
     })),
   );
-  const loading = useWorldStore((s) => s.loading);
+  const loading = useWorldStore(
+    useShallow((s) => ({ countries: s.loading.countries, states: s.loading.states })),
+  );
 
+  const accent = LEVEL_ACCENT[level];
   let title = "Explore Earth";
   let meta = loading.countries ? "Loading countries…" : `${counts.countries} countries`;
   let flag: string | undefined;
@@ -84,7 +269,7 @@ function Header({ level, accent }: { level: DrillLevel; accent: string }) {
           .join(" · ");
   } else if (level === "state" && state) {
     title = state.name;
-    meta = loading.cities ? "Loading cities…" : `${state.cityCount} cities`;
+    meta = `${state.cityCount} cities`;
   } else if (level === "city" && city) {
     title = city.name;
     meta = "City focus";
@@ -97,7 +282,7 @@ function Header({ level, accent }: { level: DrillLevel; accent: string }) {
         className="h-2.5 w-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: accent, boxShadow: `0 0 10px 1px ${accent}` }}
       />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="font-display text-[0.55rem] uppercase tracking-[0.32em] text-ink/45">
           {LEVEL_LABEL[level]}
         </div>
@@ -107,113 +292,213 @@ function Header({ level, accent }: { level: DrillLevel; accent: string }) {
         </div>
         <div className="truncate font-mono text-[0.62rem] text-ink/45">{meta}</div>
       </div>
+      <button
+        type="button"
+        onClick={onCollapse}
+        aria-label="Collapse location navigator"
+        aria-expanded
+        aria-controls={PANEL_ID}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-ink/80 transition-colors hover:bg-aurora/15 hover:text-aurora"
+      >
+        <Chevron dir="left" />
+      </button>
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Body per level                                                     */
+/* Cities | Regions tabs                                              */
 /* ------------------------------------------------------------------ */
-function Body({ level }: { level: DrillLevel }) {
-  if (level === "world") return <CountryList />;
-  if (level === "country") return <StateList />;
-  if (level === "state") return <CityList />;
-  return <CityDetail />;
-}
-
-function CountryList() {
-  const countries = useWorldStore((s) => s.countries);
-  const loading = useWorldStore((s) => s.loading.countries);
-  const error = useWorldStore((s) => s.error);
-  const selectCountry = useWorldStore((s) => s.selectCountry);
-  const loadCountries = useWorldStore((s) => s.loadCountries);
-
-  if (loading && countries.length === 0) return <SkeletonRows />;
-  if (error && countries.length === 0)
-    return <ErrorState message={error} onRetry={() => void loadCountries()} />;
-  if (countries.length === 0) return <EmptyState message="No countries available." />;
-
+function SegmentedTabs({
+  tab,
+  onChange,
+}: {
+  tab: CountryTab;
+  onChange: (t: CountryTab) => void;
+}) {
   return (
-    <ul className="mt-2 space-y-0.5">
-      {countries.map((c) => (
-        <ListRow
-          key={c.iso2}
-          leading={<span aria-hidden>{c.flag}</span>}
-          label={c.name}
-          trailing={`${c.stateCount}`}
-          onClick={() => void selectCountry(c.iso2)}
-        />
-      ))}
-    </ul>
+    <div
+      role="tablist"
+      aria-label="Show cities or regions"
+      className="flex rounded-full border border-white/10 bg-white/[0.04] p-0.5"
+    >
+      {(["cities", "regions"] as const).map((t) => {
+        const active = tab === t;
+        return (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            aria-controls={LIST_REGION_ID}
+            onClick={() => onChange(t)}
+            className={`h-9 flex-1 rounded-full font-display text-[0.72rem] uppercase tracking-[0.18em] transition-colors ${
+              active ? "bg-aurora/18 text-aurora" : "text-ink/55 hover:text-ink"
+            }`}
+          >
+            {t === "cities" ? "Cities" : "Regions"}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-function StateList() {
-  const states = useWorldStore((s) => s.states);
-  const loading = useWorldStore((s) => s.loading.states);
-  const error = useWorldStore((s) => s.error);
+/* ------------------------------------------------------------------ */
+/* Search bar with visible submit + clear                             */
+/* ------------------------------------------------------------------ */
+function SearchBar({
+  value,
+  onChange,
+  onSubmit,
+  onClear,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onClear: () => void;
+  placeholder: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <form
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+      className="flex items-center gap-2"
+    >
+      <div className="relative flex-1">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink/35"
+        >
+          <MagnifierIcon />
+        </span>
+        <input
+          ref={inputRef}
+          type="search"
+          inputMode="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          aria-label={placeholder}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.05] pl-9 pr-9 font-display text-[0.82rem] text-ink placeholder:text-ink/35 focus:border-aurora/50 focus:outline-none"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => {
+              onClear();
+              inputRef.current?.focus();
+            }}
+            aria-label="Clear search"
+            className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink/45 transition-colors hover:bg-white/10 hover:text-ink"
+          >
+            <span aria-hidden className="text-base leading-none">
+              ×
+            </span>
+          </button>
+        )}
+      </div>
+      <button
+        type="submit"
+        aria-label="Search"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-aurora/40 bg-aurora/15 text-aurora transition-colors hover:bg-aurora/25"
+      >
+        <MagnifierIcon />
+      </button>
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* List (per view) with loading / error / empty                      */
+/* ------------------------------------------------------------------ */
+function NavigatorList({
+  kind,
+  filtered,
+  hasItems,
+  query,
+  onSelect,
+}: {
+  kind: ListKind;
+  filtered: ListItem[];
+  hasItems: boolean;
+  query: string;
+  onSelect: (item: ListItem) => void;
+}) {
+  const loading = useWorldStore(
+    useShallow((s) => ({
+      country: s.loading.countries,
+      state: s.loading.states,
+      city: s.loading.cities,
+      countryCity: s.loading.countryCities,
+    })),
+  );
+  const genericError = useWorldStore((s) => s.error);
+  const countryCitiesError = useWorldStore((s) => s.countryCitiesError);
   const country = useWorldStore((s) => s.selectedCountry);
-  const selectState = useWorldStore((s) => s.selectState);
-  const selectCountry = useWorldStore((s) => s.selectCountry);
-
-  if (loading) return <SkeletonRows />;
-  if (error)
-    return (
-      <ErrorState
-        message={error}
-        onRetry={country ? () => void selectCountry(country.iso2) : undefined}
-      />
-    );
-  if (states.length === 0)
-    return <EmptyState message="No subdivisions available for this country." />;
-
-  return (
-    <ul className="mt-2 space-y-0.5">
-      {states.map((st) => (
-        <ListRow
-          key={st.iso}
-          label={st.name}
-          trailing={`${st.cityCount}`}
-          onClick={() => void selectState(st.iso)}
-        />
-      ))}
-    </ul>
-  );
-}
-
-function CityList() {
-  const cities = useWorldStore((s) => s.cities);
-  const loading = useWorldStore((s) => s.loading.cities);
-  const error = useWorldStore((s) => s.error);
   const state = useWorldStore((s) => s.selectedState);
+  const loadCountries = useWorldStore((s) => s.loadCountries);
+  const loadCountryCities = useWorldStore((s) => s.loadCountryCities);
+  const selectCountry = useWorldStore((s) => s.selectCountry);
   const selectState = useWorldStore((s) => s.selectState);
-  const selectCity = useWorldStore((s) => s.selectCity);
 
-  if (loading) return <SkeletonRows />;
-  if (error)
-    return (
-      <ErrorState
-        message={error}
-        onRetry={state ? () => void selectState(state.iso) : undefined}
-      />
-    );
-  if (cities.length === 0)
-    return <EmptyState message="No cities available for this region." />;
+  const isLoading =
+    kind === "country"
+      ? loading.country
+      : kind === "state"
+        ? loading.state
+        : kind === "countryCity"
+          ? loading.countryCity
+          : loading.city;
+
+  const error = kind === "countryCity" ? countryCitiesError : genericError;
+
+  const retry = (): void => {
+    if (kind === "country") void loadCountries();
+    else if (kind === "state" && country) void selectCountry(country.iso2);
+    else if (kind === "countryCity" && country) void loadCountryCities(country.iso2);
+    else if (kind === "city" && state) void selectState(state.iso);
+  };
+
+  if (isLoading && !hasItems) return <SkeletonRows />;
+  if (error && !hasItems) return <ErrorState message={error} onRetry={retry} />;
+  if (!hasItems) return <EmptyState message={EMPTY_MESSAGE[kind]} />;
+  if (filtered.length === 0)
+    return <EmptyState message={`No matches for “${query.trim()}”.`} />;
 
   return (
     <ul className="mt-2 space-y-0.5">
-      {cities.map((city) => (
-        <ListRow
-          key={`${city.name}:${city.lat},${city.lng}`}
-          label={city.name}
-          trailing={city.timezone ? city.timezone.split("/").pop()?.replace(/_/g, " ") : undefined}
-          onClick={() => selectCity(city)}
-        />
+      {filtered.map((item) => (
+        <ListRow key={rowKey(kind, item)} kind={kind} item={item} onSelect={onSelect} />
       ))}
     </ul>
   );
 }
 
+const EMPTY_MESSAGE: Record<ListKind, string> = {
+  country: "No countries available.",
+  state: "No subdivisions available for this country.",
+  countryCity: "No cities available for this country.",
+  city: "No cities available for this region.",
+};
+
+function rowKey(kind: ListKind, item: ListItem): string {
+  if (kind === "country") return (item as Country).iso2;
+  if (kind === "state") return (item as State).iso;
+  const c = item as City;
+  return `${c.name}:${c.lat},${c.lng}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* City detail (city level)                                          */
+/* ------------------------------------------------------------------ */
 function CityDetail() {
   const city = useWorldStore((s) => s.selectedCity);
   const state = useWorldStore((s) => s.selectedState);
@@ -246,48 +531,45 @@ function CityDetail() {
 /* Shared row + states                                                */
 /* ------------------------------------------------------------------ */
 function ListRow({
-  leading,
-  label,
-  trailing,
-  onClick,
+  kind,
+  item,
+  onSelect,
 }: {
-  leading?: React.ReactNode;
-  label: string;
-  trailing?: string;
-  onClick: () => void;
+  kind: ListKind;
+  item: ListItem;
+  onSelect: (item: ListItem) => void;
 }) {
+  let leading: React.ReactNode;
+  let trailing: string | undefined;
+
+  if (kind === "country") {
+    const c = item as Country;
+    leading = <span aria-hidden>{c.flag}</span>;
+    trailing = `${c.stateCount}`;
+  } else if (kind === "state") {
+    trailing = `${(item as State).cityCount}`;
+  } else {
+    const c = item as City;
+    trailing = c.timezone ? c.timezone.split("/").pop()?.replace(/_/g, " ") : undefined;
+  }
+
   return (
     <li>
       <button
         type="button"
-        onClick={onClick}
-        className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-white/[0.06]"
+        onClick={() => onSelect(item)}
+        className="group flex min-h-[2.5rem] w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-white/[0.06]"
       >
         {leading && <span className="shrink-0 text-sm">{leading}</span>}
         <span className="min-w-0 flex-1 truncate font-display text-[0.82rem] text-ink/80 transition-colors group-hover:text-ink">
-          {label}
+          {itemName(item)}
         </span>
         {trailing && (
           <span className="shrink-0 font-mono text-[0.62rem] text-ink/35 transition-colors group-hover:text-aurora">
             {trailing}
           </span>
         )}
-        <svg
-          viewBox="0 0 24 24"
-          width="13"
-          height="13"
-          fill="none"
-          aria-hidden
-          className="shrink-0 text-ink/20 transition-colors group-hover:text-aurora"
-        >
-          <path
-            d="M9 6l6 6-6 6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <Chevron dir="right" className="text-ink/20 transition-colors group-hover:text-aurora" small />
       </button>
     </li>
   );
@@ -328,11 +610,53 @@ function ErrorState({ message, onRetry }: { message: string; onRetry?: () => voi
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-full border border-city/30 bg-city/10 px-3.5 py-1.5 font-display text-[0.72rem] tracking-wide text-city transition-colors hover:bg-city/20"
+          className="min-h-[2.5rem] rounded-full border border-city/30 bg-city/10 px-4 py-1.5 font-display text-[0.72rem] tracking-wide text-city transition-colors hover:bg-city/20"
         >
           Try again
         </button>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Icons                                                              */
+/* ------------------------------------------------------------------ */
+function Chevron({
+  dir,
+  className,
+  small,
+}: {
+  dir: "left" | "right";
+  className?: string;
+  small?: boolean;
+}) {
+  const size = small ? 13 : 16;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      aria-hidden
+      className={`shrink-0 ${className ?? ""}`}
+    >
+      <path
+        d={dir === "left" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MagnifierIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="M20 20l-3.2-3.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }

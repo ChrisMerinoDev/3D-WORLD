@@ -22,12 +22,12 @@ export function DatePanel() {
       initial={reduce ? false : { opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut", delay: 0.12 }}
-      className="glass pointer-events-auto w-[13.5rem] rounded-2xl px-4 py-3 sm:w-60 sm:px-5"
+      className="glass pointer-events-auto w-[10.75rem] rounded-2xl px-3 py-2.5 sm:w-60 sm:px-5 sm:py-3"
     >
       <div className="font-display text-[0.58rem] uppercase tracking-[0.3em] text-city/80">
         {mounted ? t.weekday : "—"}
       </div>
-      <div className="mt-1 font-display text-lg font-medium tracking-wide text-ink sm:text-xl">
+      <div className="mt-1 truncate font-display text-[0.95rem] font-medium tracking-wide text-ink sm:text-xl">
         {mounted ? (
           <>
             {t.monthName}{" "}
